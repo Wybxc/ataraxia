@@ -180,6 +180,24 @@ impl Term {
         }
     }
 
+    /// Get the argument of the abstraction. If the term is not an abstraction,
+    /// return `None`.
+    pub fn arg(&self) -> Option<&ArcStr> {
+        match self.as_ref() {
+            TermImpl::Abstract { arg, .. } => Some(arg),
+            _ => None,
+        }
+    }
+
+    /// Get the body of the abstraction. If the term is not an abstraction,
+    /// return `None`.
+    pub fn body(&self) -> Option<&Term> {
+        match self.as_ref() {
+            TermImpl::Abstract { body, .. } => Some(body),
+            _ => None,
+        }
+    }
+
     /// Get the type of the term.
     pub fn ty(&self) -> &Type {
         match self.as_ref() {
@@ -189,6 +207,35 @@ impl Term {
                 TypeImpl::Func { ret, .. } => ret,
                 _ => panic!("expected function type"),
             },
+        }
+    }
+
+    /// Check if the term has a free variable with the given name.
+    pub fn has_free_var(&self, x: &str) -> bool {
+        match self.as_ref() {
+            TermImpl::Var { name, .. } => name == x,
+            TermImpl::Abstract { arg, body, .. } => arg != x && body.has_free_var(x),
+            TermImpl::Apply { func, arg } => func.has_free_var(x) || arg.has_free_var(x),
+        }
+    }
+
+    /// Substitute a term for a free variable.
+    pub fn subst(self, x: &str, t: Term) -> Self {
+        if !self.has_free_var(x) {
+            return self;
+        }
+        match self.as_ref() {
+            TermImpl::Var { name, .. } if name == x => t,
+            TermImpl::Abstract { arg, arg_ty, body } if arg != x => {
+                let body = body.clone().subst(x, t);
+                Self::abs(arg.clone(), arg_ty.clone(), body)
+            }
+            TermImpl::Apply { func, arg } => {
+                let func = func.clone().subst(x, t.clone());
+                let arg = arg.clone().subst(x, t);
+                Self::app(func, arg).expect("internal ereor")
+            }
+            _ => self,
         }
     }
 

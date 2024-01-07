@@ -4,6 +4,7 @@ use std::fmt::Display;
 
 use crate::term::{Formula, FormulaSet, Sentence, Term, Type};
 
+use arcstr::ArcStr;
 use eyre::{ensure, Context, OptionExt, Result};
 
 /// A theorem in the LCF calculus.
@@ -248,6 +249,62 @@ impl Theorem {
         let ite = Term::ite(s.ty().clone());
         let term = uapp!(uapp!(uapp!(ite, Term::uu(Type::bool())), s.clone()), t);
         Ok(theorem!(=> uequiv!(term, Term::uu(s.ty().clone()))))
+    }
+
+    /// Abstraction rule.
+    ///
+    /// # Semantics
+    /// ```text
+    ///    P |- s ⊑ t
+    /// ----------------
+    /// P |- λx.s ⊑ λx.t
+    /// ```
+    pub fn abstr(self, x: impl Into<ArcStr>, ty: Type) -> Result<Self> {
+        let x = x.into();
+        let formula = self
+            .0
+            .right
+            .single()
+            .ok_or_eyre("abstr: more than one formula on right")?;
+        let right = FormulaSet::unit({
+            let left = Term::abs(x.clone(), ty.clone(), formula.left);
+            let right = Term::abs(x, ty, formula.right);
+            Formula::new(left, right).wrap_err("abstr: combine left and right")?
+        });
+        Ok(theorem!(self.0.left => right))
+    }
+
+    /// Conversion rule.
+    ///
+    /// # Semantics
+    /// ```text
+    /// |- (λx.s)(t) ≡ s[t/x]
+    /// ```
+    pub fn conv(func: Term, t: Term) -> Result<Self> {
+        let arg = func.arg().ok_or_eyre("conv: not a function")?;
+        let right = func
+            .body()
+            .expect("internal error")
+            .clone()
+            .subst(arg, t.clone());
+        let left = Term::app(func, t).wrap_err("conv: apply")?;
+        Ok(theorem!(=> uequiv!(left, right)))
+    }
+
+    /// Function rule.
+    ///
+    /// # Semantics
+    /// ```text
+    /// |- λx.f(x) ≡ f
+    pub fn func(f: Term, x: impl Into<ArcStr>) -> Result<Self> {
+        let x = x.into();
+        let left = Term::abs(
+            x.clone(),
+            f.ty().clone(),
+            Term::app(f.clone(), Term::var(x, f.ty().clone())).wrap_err("func: apply")?,
+        );
+        let right = f;
+        Ok(theorem!(=> uequiv!(left, right)))
     }
 
     // TODO: finish implementing the rest of the rules
