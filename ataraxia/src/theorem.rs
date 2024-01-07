@@ -256,11 +256,15 @@ impl Theorem {
     /// # Semantics
     /// ```text
     ///    P |- s ⊑ t
-    /// ----------------
+    /// ----------------  (x not free in P)
     /// P |- λx.s ⊑ λx.t
     /// ```
     pub fn abstr(self, x: impl Into<ArcStr>, ty: Type) -> Result<Self> {
         let x = x.into();
+        ensure!(
+            !self.0.left.has_free_var(&x),
+            "abstr: variable is free in left"
+        );
         let formula = self
             .0
             .right
@@ -355,9 +359,13 @@ impl Theorem {
     /// # Semantics
     /// ```text
     /// P |- Q[uu/x]    P, Q |- Q[t/x]
-    /// ------------------------------
+    /// ------------------------------  (x not free in P)
     ///        P |- Q[ℱx.t/x]
     pub fn induct(base: Self, step: Self, q: FormulaSet, x: &str, t: Term) -> Result<Self> {
+        ensure!(
+            !base.0.left.has_free_var(x),
+            "induct: variable is free in left of `base`"
+        );
         ensure!(
             base.0.right == q.clone().subst(x, Term::uu(t.ty().clone())),
             "induct: right side of `base` does not match `Q[uu/x]`"

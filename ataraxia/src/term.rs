@@ -305,6 +305,11 @@ impl Formula {
         }
     }
 
+    /// Check if the formula has a free variable with the given name.
+    pub fn has_free_var(&self, x: &str) -> bool {
+        self.left.has_free_var(x) || self.right.has_free_var(x)
+    }
+
     /// Display the formula.
     pub fn display(&self, show_types: bool) -> impl Display + '_ {
         struct DisplayFormula<'a>(&'a Formula, bool);
@@ -385,6 +390,11 @@ impl FormulaSet {
     /// Check if the formula set is a superset of another formula set.
     pub fn is_superset(&self, subset: &Self) -> bool {
         subset.is_subset(self)
+    }
+
+    /// Check if the formula set has a free variable with the given name.
+    pub fn has_free_var(&self, x: &str) -> bool {
+        self.formulas.iter().any(|formula| formula.has_free_var(x))
     }
 
     /// Return the substraction of two formula sets, i.e. the set of formulas
