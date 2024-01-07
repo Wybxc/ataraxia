@@ -172,6 +172,14 @@ impl Term {
         Ok(Arc::new(TermImpl::Apply { func, arg }).into())
     }
 
+    /// Get the name of the variable. If the term is not a variable, return `None`.
+    pub fn name(&self) -> Option<&ArcStr> {
+        match self.as_ref() {
+            TermImpl::Var { name, .. } => Some(name),
+            _ => None,
+        }
+    }
+
     /// Get the type of the term.
     pub fn ty(&self) -> &Type {
         match self.as_ref() {
@@ -227,7 +235,7 @@ impl Term {
 /// A formula consisting of `(left, right)` means the value of `left` is less than
 /// or equal to the value of `right`. More precisely, they are related by the
 /// partial order defined by the domain chosen for the calculus.
-/// 
+///
 /// The type of `left` and `right` must be the same.
 #[derive(Debug, Clone, Hash, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Formula {
@@ -289,6 +297,12 @@ impl FormulaSet {
         Ok(Self::from_iter([f1, f2]))
     }
 
+    /// An empty formula set.
+    pub fn empty() -> Self {
+        Self::new(OrdSet::new())
+    }
+
+    /// A formula set that contains a single formula.
     pub fn unit(f: Formula) -> Self {
         Self::new(OrdSet::unit(f))
     }

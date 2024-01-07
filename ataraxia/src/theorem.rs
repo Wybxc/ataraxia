@@ -2,7 +2,7 @@
 
 use std::fmt::Display;
 
-use crate::term::{Formula, FormulaSet, Sentence, Term};
+use crate::term::{Formula, FormulaSet, Sentence, Term, Type};
 
 use eyre::{ensure, Context, OptionExt, Result};
 
@@ -18,6 +18,9 @@ use eyre::{ensure, Context, OptionExt, Result};
 pub struct Theorem(Sentence);
 
 macro_rules! theorem {
+    (=> $right: expr) => {
+        Theorem::new(FormulaSet::empty(), $right)
+    };
     ($left: expr => $right: expr) => {
         Theorem::new($left, $right)
     };
@@ -59,7 +62,7 @@ impl Theorem {
     pub fn include(self, p: FormulaSet) -> Result<Self> {
         ensure!(
             p.is_subset(&self.0.right),
-            "include: formula not in theorem"
+            "include: formula not in right side of `p`"
         );
         Ok(theorem!(self.0.left.union(p) => self.0.right))
     }
@@ -106,7 +109,7 @@ impl Theorem {
         let right = FormulaSet::unit({
             let left = Term::app(u.clone(), formula.left).wrap_err("apply: apply to left")?;
             let right = Term::app(u, formula.right).wrap_err("apply: apply to right")?;
-            Formula::new(left, right)?
+            Formula::new(left, right).wrap_err("apply: combine left and right")?
         });
         Ok(theorem!(self.0.left => right))
     }
@@ -118,8 +121,8 @@ impl Theorem {
     /// |- s ⊑ s
     /// ```
     pub fn refl(s: Term) -> Self {
-        let formula = Formula::new(s.clone(), s).expect("refl: invalid formula");
-        theorem!(FormulaSet::unit(formula.clone()) => FormulaSet::unit(formula))
+        let formula = Formula::new(s.clone(), s).expect("internal error");
+        theorem!(=> FormulaSet::unit(formula))
     }
 
     /// Transitivity rule.
@@ -146,8 +149,36 @@ impl Theorem {
             .single()
             .ok_or_eyre("trans: more than one formula on right")?;
         ensure!(f1.right == f2.left, "trans: right formulas do not match");
-        let right = FormulaSet::unit(Formula::new(f1.left, f2.right)?);
+        let right = FormulaSet::unit(
+            Formula::new(f1.left, f2.right).wrap_err("trans: combine left and right")?,
+        );
         Ok(theorem!(self.0.left => right))
+    }
+
+    /// Min rule.
+    ///
+    /// # Semantics
+    /// ```text
+    /// |- UU ⊑ s
+    /// ```
+    pub fn min(s: Term) -> Result<Self> {
+        let uu = Term::uu(s.ty().clone());
+        let formula = Formula::new(uu, s).expect("internal error");
+        Ok(theorem!(=> FormulaSet::unit(formula)))
+    }
+
+    /// Min rule for applications.
+    ///
+    /// # Semantics
+    /// ```text
+    /// |- UU(s) ⊑ UU
+    /// ```
+    pub fn min_app(s: Term, ret_ty: Type) -> Result<Self> {
+        let uu_fun = Term::uu(Type::func(s.ty().clone(), ret_ty.clone()));
+        let uu_ret = Term::uu(ret_ty);
+        let formula = Formula::new(Term::app(uu_fun, s).expect("internal error"), uu_ret)
+            .expect("internal error");
+        Ok(theorem!(=> FormulaSet::unit(formula)))
     }
 
     // TODO: finish implementing the rest of the rules
