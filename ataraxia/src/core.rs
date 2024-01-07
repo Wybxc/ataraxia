@@ -2,7 +2,7 @@
 
 use crate::term::{Term, Type};
 
-impl Term {
+impl Type {
     /// Boolean type.
     ///
     /// # Semantics
@@ -12,13 +12,15 @@ impl Term {
     pub fn bool() -> Type {
         Type::basic("bool")
     }
+}
 
+impl Term {
     /// The true value.
     ///
     /// # Semantics
     /// `tt` is the true value of type `bool`.
     pub fn tt() -> Term {
-        Term::var("tt", Self::bool())
+        Term::var("tt", Type::bool())
     }
 
     /// The false value.
@@ -26,7 +28,7 @@ impl Term {
     /// # Semantics
     /// `ff` is the false value of type `bool`.
     pub fn ff() -> Term {
-        Term::var("ff", Self::bool())
+        Term::var("ff", Type::bool())
     }
 
     /// The unknown value.
@@ -50,7 +52,7 @@ impl Term {
     /// - If the condition is `uu`, the result is `uu`.
     pub fn ite(ty: Type) -> Term {
         let ty = Type::func(
-            Self::bool(),
+            Type::bool(),
             Type::func(ty.clone(), Type::func(ty.clone(), ty)),
         );
         Term::var("ite", ty)

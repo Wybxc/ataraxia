@@ -17,12 +17,34 @@ use eyre::{ensure, Context, OptionExt, Result};
 #[derive(Debug, Clone)]
 pub struct Theorem(Sentence);
 
+/// Create a theorem.
 macro_rules! theorem {
     (=> $right: expr) => {
         Theorem::new(FormulaSet::empty(), $right)
     };
     ($left: expr => $right: expr) => {
         Theorem::new($left, $right)
+    };
+}
+
+/// Create a formula. Assumes that the formula is well-typed.
+macro_rules! uformula {
+    ($left: expr, $right: expr) => {
+        Formula::new($left, $right).expect("internal error")
+    };
+}
+
+/// Create a application term. Assumes that the term is well-typed.
+macro_rules! uapp {
+    ($left: expr, $right: expr) => {
+        Term::app($left, $right).expect("internal error")
+    };
+}
+
+/// Create a equivalence formula set. Assumes that the formulas are well-typed.
+macro_rules! uequiv {
+    ($left: expr, $right: expr) => {
+        FormulaSet::equiv($left, $right).expect("internal error")
     };
 }
 
@@ -121,7 +143,7 @@ impl Theorem {
     /// |- s ⊑ s
     /// ```
     pub fn refl(s: Term) -> Self {
-        let formula = Formula::new(s.clone(), s).expect("internal error");
+        let formula = uformula!(s.clone(), s);
         theorem!(=> FormulaSet::unit(formula))
     }
 
@@ -163,7 +185,7 @@ impl Theorem {
     /// ```
     pub fn min(s: Term) -> Result<Self> {
         let uu = Term::uu(s.ty().clone());
-        let formula = Formula::new(uu, s).expect("internal error");
+        let formula = uformula!(uu, s);
         Ok(theorem!(=> FormulaSet::unit(formula)))
     }
 
@@ -176,9 +198,56 @@ impl Theorem {
     pub fn min_app(s: Term, ret_ty: Type) -> Result<Self> {
         let uu_fun = Term::uu(Type::func(s.ty().clone(), ret_ty.clone()));
         let uu_ret = Term::uu(ret_ty);
-        let formula = Formula::new(Term::app(uu_fun, s).expect("internal error"), uu_ret)
-            .expect("internal error");
+        let formula = uformula!(uapp!(uu_fun, s), uu_ret);
         Ok(theorem!(=> FormulaSet::unit(formula)))
+    }
+
+    /// Conditional true rule.
+    ///
+    /// # Semantics
+    /// ```text
+    /// |- ite(tt, s, t) ≡ s
+    /// ```
+    pub fn cond_true(s: Term, t: Term) -> Result<Self> {
+        ensure!(
+            s.ty() == t.ty(),
+            "cond_true: terms do not have the same type"
+        );
+        let ite = Term::ite(s.ty().clone());
+        let term = uapp!(uapp!(uapp!(ite, Term::tt()), s.clone()), t);
+        Ok(theorem!(=> uequiv!(term, s)))
+    }
+
+    /// Conditional false rule.
+    ///
+    /// # Semantics
+    /// ```text
+    /// |- ite(ff, s, t) ≡ t
+    /// ```
+    pub fn cond_false(s: Term, t: Term) -> Result<Self> {
+        ensure!(
+            s.ty() == t.ty(),
+            "cond_false: terms do not have the same type"
+        );
+        let ite = Term::ite(s.ty().clone());
+        let term = uapp!(uapp!(uapp!(ite, Term::ff()), s), t.clone());
+        Ok(theorem!(=> uequiv!(term, t)))
+    }
+
+    /// Conditional unknown rule.
+    ///
+    /// # Semantics
+    /// ```text
+    /// |- ite(uu, s, t) ≡ uu
+    /// ```
+    pub fn cond_unknown(s: Term, t: Term) -> Result<Self> {
+        ensure!(
+            s.ty() == t.ty(),
+            "cond_unknown: terms do not have the same type"
+        );
+        let ite = Term::ite(s.ty().clone());
+        let term = uapp!(uapp!(uapp!(ite, Term::uu(Type::bool())), s.clone()), t);
+        Ok(theorem!(=> uequiv!(term, Term::uu(s.ty().clone()))))
     }
 
     // TODO: finish implementing the rest of the rules
