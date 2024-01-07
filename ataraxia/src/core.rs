@@ -68,6 +68,8 @@ impl Term {
     /// # Semantics
     /// `fix` is the fixpoint combinator, which takes a function and returns
     /// its fixed point.
+    ///
+    /// `ℱx.t` is shorthand for `fix(λx.t)`.
     pub fn fix(ty: Type) -> Term {
         let ty = Type::func(Type::func(ty.clone(), ty.clone()), ty);
         Term::var("fix", ty)

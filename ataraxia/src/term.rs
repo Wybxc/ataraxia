@@ -166,10 +166,10 @@ impl Term {
     }
 
     /// Create an application.
-    pub fn app(func: Self, arg: Self) -> Result<Self> {
-        let arg_ty = func.ty().arg().ok_or_eyre("expected function type")?;
+    pub fn app(self, arg: Self) -> Result<Self> {
+        let arg_ty = self.ty().arg().ok_or_eyre("expected function type")?;
         ensure!(arg.ty() == arg_ty, "argument type mismatch");
-        Ok(Arc::new(TermImpl::Apply { func, arg }).into())
+        Ok(Arc::new(TermImpl::Apply { func: self, arg }).into())
     }
 
     /// Get the name of the variable. If the term is not a variable, return `None`.
@@ -297,6 +297,14 @@ impl Formula {
         Ok(Self { left, right })
     }
 
+    /// Substitute a term for a free variable.
+    pub fn subst(self, x: &str, t: Term) -> Self {
+        Self {
+            left: self.left.subst(x, t.clone()),
+            right: self.right.subst(x, t),
+        }
+    }
+
     /// Display the formula.
     pub fn display(&self, show_types: bool) -> impl Display + '_ {
         struct DisplayFormula<'a>(&'a Formula, bool);
@@ -338,6 +346,9 @@ impl FormulaSet {
 
     /// A formula that represents equality between two terms, that is, the
     /// terms are related by the partial order in both directions.
+    ///
+    /// # Semantics
+    /// `s ≡ t` is shorthand for `s ⊑ t, t ⊑ s`.
     pub fn equiv(t1: Term, t2: Term) -> Result<Self> {
         let f1 = Formula::new(t1.clone(), t2.clone())?;
         let f2 = Formula::new(t2, t1)?;
@@ -378,9 +389,20 @@ impl FormulaSet {
 
     /// Return the substraction of two formula sets, i.e. the set of formulas
     /// in the first set that are not in the second set.
-    pub fn substract(self, other: Self) -> Self {
+    pub fn comp(self, other: Self) -> Self {
         Self {
             formulas: self.formulas.relative_complement(other.formulas),
+        }
+    }
+
+    /// Substitute a term for a free variable.
+    pub fn subst(self, x: &str, t: Term) -> Self {
+        Self {
+            formulas: self
+                .formulas
+                .into_iter()
+                .map(|formula| formula.subst(x, t.clone()))
+                .collect(),
         }
     }
 

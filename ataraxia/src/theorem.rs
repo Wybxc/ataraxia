@@ -287,7 +287,7 @@ impl Theorem {
             .expect("internal error")
             .clone()
             .subst(arg, t.clone());
-        let left = Term::app(func, t).wrap_err("conv: apply")?;
+        let left = func.app(t).wrap_err("conv: apply")?;
         Ok(theorem!(=> uequiv!(left, right)))
     }
 
@@ -301,7 +301,9 @@ impl Theorem {
         let left = Term::abs(
             x.clone(),
             f.ty().clone(),
-            Term::app(f.clone(), Term::var(x, f.ty().clone())).wrap_err("func: apply")?,
+            f.clone()
+                .app(Term::var(x, f.ty().clone()))
+                .wrap_err("func: apply")?,
         );
         let right = f;
         Ok(theorem!(=> uequiv!(left, right)))
@@ -324,14 +326,52 @@ impl Theorem {
         ensure!(t.0.left.is_superset(&stt), "cases: cannot infer `s ≡ tt`");
         ensure!(f.0.left.is_superset(&sff), "cases: cannot infer `s ≡ ff`");
         ensure!(u.0.left.is_superset(&suu), "cases: cannot infer `s ≡ uu`");
-        let pt = t.0.left.substract(stt);
-        let pf = f.0.left.substract(sff);
-        let pu = u.0.left.substract(suu);
+        let pt = t.0.left.comp(stt);
+        let pf = f.0.left.comp(sff);
+        let pu = u.0.left.comp(suu);
         let p = pt.union(pf).union(pu);
         ensure!(t.0.right == f.0.right, "cases: formulas do not match");
         ensure!(t.0.right == u.0.right, "cases: formulas do not match");
         Ok(theorem!(p => t.0.right))
     }
 
-    // TODO: finish implementing the rest of the rules
+    /// Fixpoint rule.
+    ///
+    /// # Semantics
+    /// ```text
+    /// |- ℱx.t ≡ t[ℱx.t/x]
+    /// ```
+    pub fn fix(x: impl Into<ArcStr>, ty: Type, t: Term) -> Result<Self> {
+        let x = x.into();
+        let left = Term::fix(ty.clone())
+            .app(Term::abs(x.clone(), ty, t.clone()))
+            .wrap_err("fix: apply")?;
+        let right = t.subst(&x, left.clone());
+        Ok(theorem!(=> uequiv!(left, right)))
+    }
+
+    /// Induction rule.
+    ///
+    /// # Semantics
+    /// ```text
+    /// P |- Q[uu/x]    P, Q |- Q[t/x]
+    /// ------------------------------
+    ///        P |- Q[ℱx.t/x]
+    pub fn induct(base: Self, step: Self, q: FormulaSet, x: &str, t: Term) -> Result<Self> {
+        ensure!(
+            base.0.right == q.clone().subst(x, Term::uu(t.ty().clone())),
+            "induct: right side of `base` does not match `Q[uu/x]`"
+        );
+        ensure!(
+            step.0.left == base.0.left.clone().union(q.clone()),
+            "induct: left side of `step` does not match `P, Q`"
+        );
+        ensure!(
+            step.0.right == q.clone().subst(x, t.clone()),
+            "induct: right side of `step` does not match `Q[t/x]`"
+        );
+        let fix = uapp!(Term::fix(t.ty().clone()), Term::abs(x, t.ty().clone(), t));
+        let right = q.subst(x, fix);
+        Ok(theorem!(base.0.left => right))
+    }
 }
