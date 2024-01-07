@@ -307,5 +307,31 @@ impl Theorem {
         Ok(theorem!(=> uequiv!(left, right)))
     }
 
+    /// Cases distinction rule.
+    ///
+    /// # Semantics
+    /// ```text
+    /// P1, s ≡ tt |- Q
+    /// P2, s ≡ ff |- Q
+    /// P3, s ≡ uu |- Q
+    /// ---------------
+    /// P1, P2, P3 |- Q
+    pub fn cases(t: Self, f: Self, u: Self, s: Term) -> Result<Self> {
+        ensure!(s.ty().is_bool(), "cases: term is not a bool");
+        let stt = uequiv!(s.clone(), Term::tt());
+        let sff = uequiv!(s.clone(), Term::ff());
+        let suu = uequiv!(s, Term::uu(Type::bool()));
+        ensure!(t.0.left.is_superset(&stt), "cases: cannot infer `s ≡ tt`");
+        ensure!(f.0.left.is_superset(&sff), "cases: cannot infer `s ≡ ff`");
+        ensure!(u.0.left.is_superset(&suu), "cases: cannot infer `s ≡ uu`");
+        let pt = t.0.left.substract(stt);
+        let pf = f.0.left.substract(sff);
+        let pu = u.0.left.substract(suu);
+        let p = pt.union(pf).union(pu);
+        ensure!(t.0.right == f.0.right, "cases: formulas do not match");
+        ensure!(t.0.right == u.0.right, "cases: formulas do not match");
+        Ok(theorem!(p => t.0.right))
+    }
+
     // TODO: finish implementing the rest of the rules
 }

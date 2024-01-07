@@ -327,13 +327,13 @@ impl Formula {
 /// Empty sets are allowed, and are considered equivalent to `tt`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FormulaSet {
-    pub formlas: OrdSet<Formula>,
+    pub formulas: OrdSet<Formula>,
 }
 
 impl FormulaSet {
     /// Create a formula set.
     pub fn new(formlas: OrdSet<Formula>) -> Self {
-        Self { formlas }
+        Self { formulas: formlas }
     }
 
     /// A formula that represents equality between two terms, that is, the
@@ -356,26 +356,39 @@ impl FormulaSet {
 
     /// Check if the formula set contains the given formula.
     pub fn has(&self, formula: &Formula) -> bool {
-        self.formlas.contains(formula)
+        self.formulas.contains(formula)
     }
 
     /// Return the union of two formula sets.
     pub fn union(self, other: Self) -> Self {
         Self {
-            formlas: self.formlas.union(other.formlas),
+            formulas: self.formulas.union(other.formulas),
         }
     }
 
     /// Check if the formula set is a subset of another formula set.
-    pub fn is_subset(&self, super_set: &Self) -> bool {
-        self.formlas.is_subset(&super_set.formlas)
+    pub fn is_subset(&self, superset: &Self) -> bool {
+        self.formulas.is_subset(&superset.formulas)
+    }
+
+    /// Check if the formula set is a superset of another formula set.
+    pub fn is_superset(&self, subset: &Self) -> bool {
+        subset.is_subset(self)
+    }
+
+    /// Return the substraction of two formula sets, i.e. the set of formulas
+    /// in the first set that are not in the second set.
+    pub fn substract(self, other: Self) -> Self {
+        Self {
+            formulas: self.formulas.relative_complement(other.formulas),
+        }
     }
 
     /// Return the single formula in the set, if there is exactly one.
     /// Otherwise, return `None`.
     pub fn single(self) -> Option<Formula> {
-        if self.formlas.len() == 1 {
-            self.formlas.into_iter().next()
+        if self.formulas.len() == 1 {
+            self.formulas.into_iter().next()
         } else {
             None
         }
@@ -388,7 +401,7 @@ impl FormulaSet {
         impl Display for DisplayFormulaSet<'_> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 let mut first = true;
-                for formula in &self.0.formlas {
+                for formula in &self.0.formulas {
                     if first {
                         first = false;
                     } else {
@@ -406,7 +419,7 @@ impl FormulaSet {
 
 impl From<OrdSet<Formula>> for FormulaSet {
     fn from(formlas: OrdSet<Formula>) -> Self {
-        Self { formlas }
+        Self { formulas: formlas }
     }
 }
 

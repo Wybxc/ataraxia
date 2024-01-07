@@ -12,6 +12,11 @@ impl Type {
     pub fn bool() -> Type {
         Type::basic("bool")
     }
+
+    /// Check if the type is the boolean type.
+    pub fn is_bool(&self) -> bool {
+        self == &Self::bool()
+    }
 }
 
 impl Term {
