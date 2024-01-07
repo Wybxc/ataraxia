@@ -227,6 +227,8 @@ impl Term {
 /// A formula consisting of `(left, right)` means the value of `left` is less than
 /// or equal to the value of `right`. More precisely, they are related by the
 /// partial order defined by the domain chosen for the calculus.
+/// 
+/// The type of `left` and `right` must be the same.
 #[derive(Debug, Clone, Hash, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Formula {
     pub left: Term,
@@ -235,8 +237,9 @@ pub struct Formula {
 
 impl Formula {
     /// Create a formula.
-    pub fn new(left: Term, right: Term) -> Self {
-        Self { left, right }
+    pub fn new(left: Term, right: Term) -> Result<Self> {
+        ensure!(left.ty() == right.ty(), "type mismatch");
+        Ok(Self { left, right })
     }
 
     /// Display the formula.
@@ -278,6 +281,18 @@ impl FormulaSet {
         Self { formlas }
     }
 
+    /// A formula that represents equality between two terms, that is, the
+    /// terms are related by the partial order in both directions.
+    pub fn equiv(t1: Term, t2: Term) -> Result<Self> {
+        let f1 = Formula::new(t1.clone(), t2.clone())?;
+        let f2 = Formula::new(t2, t1)?;
+        Ok(Self::from_iter([f1, f2]))
+    }
+
+    pub fn unit(f: Formula) -> Self {
+        Self::new(OrdSet::unit(f))
+    }
+
     /// Check if the formula set contains the given formula.
     pub fn has(&self, formula: &Formula) -> bool {
         self.formlas.contains(formula)
@@ -293,6 +308,16 @@ impl FormulaSet {
     /// Check if the formula set is a subset of another formula set.
     pub fn is_subset(&self, super_set: &Self) -> bool {
         self.formlas.is_subset(&super_set.formlas)
+    }
+
+    /// Return the single formula in the set, if there is exactly one.
+    /// Otherwise, return `None`.
+    pub fn single(self) -> Option<Formula> {
+        if self.formlas.len() == 1 {
+            self.formlas.into_iter().next()
+        } else {
+            None
+        }
     }
 
     /// Display the formula set.
@@ -315,6 +340,18 @@ impl FormulaSet {
         }
 
         DisplayFormulaSet(self, show_types)
+    }
+}
+
+impl From<OrdSet<Formula>> for FormulaSet {
+    fn from(formlas: OrdSet<Formula>) -> Self {
+        Self { formlas }
+    }
+}
+
+impl FromIterator<Formula> for FormulaSet {
+    fn from_iter<T: IntoIterator<Item = Formula>>(iter: T) -> Self {
+        Self::new(OrdSet::from_iter(iter))
     }
 }
 

@@ -2,9 +2,9 @@
 
 use std::fmt::Display;
 
-use crate::term::{FormulaSet, Sentence};
+use crate::term::{Formula, FormulaSet, Sentence, Term};
 
-use eyre::{ensure, Result};
+use eyre::{ensure, Context, OptionExt, Result};
 
 /// A theorem in the LCF calculus.
 ///
@@ -87,6 +87,67 @@ impl Theorem {
     pub fn conj(self, other: Self) -> Result<Self> {
         ensure!(self.0.left == other.0.left, "conj: formulas do not match");
         Ok(theorem!(self.0.left => self.0.right.union(other.0.right)))
+    }
+
+    /// Apply rule.
+    ///
+    /// # Semantics
+    /// ```text
+    ///    P |- s ⊑ t
+    /// ------------------
+    ///  P |- u(s) ⊑ u(t)
+    /// ```
+    pub fn apply(self, u: Term) -> Result<Self> {
+        let formula = self
+            .0
+            .right
+            .single()
+            .ok_or_eyre("apply: more than one formula on right")?;
+        let right = FormulaSet::unit({
+            let left = Term::app(u.clone(), formula.left).wrap_err("apply: apply to left")?;
+            let right = Term::app(u, formula.right).wrap_err("apply: apply to right")?;
+            Formula::new(left, right)?
+        });
+        Ok(theorem!(self.0.left => right))
+    }
+
+    /// Reflexivity rule.
+    ///
+    /// # Semantics
+    /// ```text
+    /// |- s ⊑ s
+    /// ```
+    pub fn refl(s: Term) -> Self {
+        let formula = Formula::new(s.clone(), s).expect("refl: invalid formula");
+        theorem!(FormulaSet::unit(formula.clone()) => FormulaSet::unit(formula))
+    }
+
+    /// Transitivity rule.
+    ///
+    /// # Semantics
+    /// ```text
+    /// P |- s ⊑ t    P |- t ⊑ u
+    /// -------------------------
+    ///         P |- s ⊑ u
+    /// ```
+    pub fn trans(self, other: Self) -> Result<Self> {
+        ensure!(
+            self.0.left == other.0.left,
+            "trans: left formulas do not match"
+        );
+        let f1 = self
+            .0
+            .right
+            .single()
+            .ok_or_eyre("trans: more than one formula on right")?;
+        let f2 = other
+            .0
+            .right
+            .single()
+            .ok_or_eyre("trans: more than one formula on right")?;
+        ensure!(f1.right == f2.left, "trans: right formulas do not match");
+        let right = FormulaSet::unit(Formula::new(f1.left, f2.right)?);
+        Ok(theorem!(self.0.left => right))
     }
 
     // TODO: finish implementing the rest of the rules
