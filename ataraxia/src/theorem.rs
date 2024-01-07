@@ -185,7 +185,7 @@ impl Theorem {
     /// |- UU ⊑ s
     /// ```
     pub fn min(s: Term) -> Result<Self> {
-        let uu = Term::uu(s.ty().clone());
+        let uu = Term::uu(s.ty());
         let formula = uformula!(uu, s);
         Ok(theorem!(=> FormulaSet::unit(formula)))
     }
@@ -197,7 +197,7 @@ impl Theorem {
     /// |- UU(s) ⊑ UU
     /// ```
     pub fn min_app(s: Term, ret_ty: Type) -> Result<Self> {
-        let uu_fun = Term::uu(Type::func(s.ty().clone(), ret_ty.clone()));
+        let uu_fun = Term::uu(Type::func(s.ty(), ret_ty.clone()));
         let uu_ret = Term::uu(ret_ty);
         let formula = uformula!(uapp!(uu_fun, s), uu_ret);
         Ok(theorem!(=> FormulaSet::unit(formula)))
@@ -214,7 +214,7 @@ impl Theorem {
             s.ty() == t.ty(),
             "cond_true: terms do not have the same type"
         );
-        let ite = Term::ite(s.ty().clone());
+        let ite = Term::ite(s.ty());
         let term = uapp!(uapp!(uapp!(ite, Term::tt()), s.clone()), t);
         Ok(theorem!(=> uequiv!(term, s)))
     }
@@ -230,7 +230,7 @@ impl Theorem {
             s.ty() == t.ty(),
             "cond_false: terms do not have the same type"
         );
-        let ite = Term::ite(s.ty().clone());
+        let ite = Term::ite(s.ty());
         let term = uapp!(uapp!(uapp!(ite, Term::ff()), s), t.clone());
         Ok(theorem!(=> uequiv!(term, t)))
     }
@@ -246,9 +246,9 @@ impl Theorem {
             s.ty() == t.ty(),
             "cond_unknown: terms do not have the same type"
         );
-        let ite = Term::ite(s.ty().clone());
+        let ite = Term::ite(s.ty());
         let term = uapp!(uapp!(uapp!(ite, Term::uu(Type::bool())), s.clone()), t);
-        Ok(theorem!(=> uequiv!(term, Term::uu(s.ty().clone()))))
+        Ok(theorem!(=> uequiv!(term, Term::uu(s.ty()))))
     }
 
     /// Abstraction rule.
@@ -300,14 +300,12 @@ impl Theorem {
     /// # Semantics
     /// ```text
     /// |- λx.f(x) ≡ f
-    pub fn func(f: Term, x: impl Into<ArcStr>) -> Result<Self> {
+    pub fn func(f: Term, x: impl Into<ArcStr>, ty: Type) -> Result<Self> {
         let x = x.into();
         let left = Term::abs(
             x.clone(),
-            f.ty().clone(),
-            f.clone()
-                .app(Term::var(x, f.ty().clone()))
-                .wrap_err("func: apply")?,
+            ty.clone(),
+            f.clone().app(Term::var(x, ty)).wrap_err("func: apply")?,
         );
         let right = f;
         Ok(theorem!(=> uequiv!(left, right)))
@@ -367,7 +365,7 @@ impl Theorem {
             "induct: variable is free in left of `base`"
         );
         ensure!(
-            base.0.right == q.clone().subst(x, Term::uu(t.ty().clone())),
+            base.0.right == q.clone().subst(x, Term::uu(t.ty())),
             "induct: right side of `base` does not match `Q[uu/x]`"
         );
         ensure!(
@@ -378,7 +376,7 @@ impl Theorem {
             step.0.right == q.clone().subst(x, t.clone()),
             "induct: right side of `step` does not match `Q[t/x]`"
         );
-        let fix = uapp!(Term::fix(t.ty().clone()), Term::abs(x, t.ty().clone(), t));
+        let fix = uapp!(Term::fix(t.ty()), Term::abs(x, t.ty(), t));
         let right = q.subst(x, fix);
         Ok(theorem!(base.0.left => right))
     }

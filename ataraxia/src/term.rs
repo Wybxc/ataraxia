@@ -167,8 +167,9 @@ impl Term {
 
     /// Create an application.
     pub fn app(self, arg: Self) -> Result<Self> {
-        let arg_ty = self.ty().arg().ok_or_eyre("expected function type")?;
-        ensure!(arg.ty() == arg_ty, "argument type mismatch");
+        let ty = self.ty();
+        let arg_ty = ty.arg().ok_or_eyre("expected function type")?;
+        ensure!(&arg.ty() == arg_ty, "argument type mismatch");
         Ok(Arc::new(TermImpl::Apply { func: self, arg }).into())
     }
 
@@ -199,14 +200,11 @@ impl Term {
     }
 
     /// Get the type of the term.
-    pub fn ty(&self) -> &Type {
+    pub fn ty(&self) -> Type {
         match self.as_ref() {
-            TermImpl::Var { ty, .. } => ty,
-            TermImpl::Abstract { arg_ty, .. } => arg_ty,
-            TermImpl::Apply { func, .. } => match func.ty().as_ref() {
-                TypeImpl::Func { ret, .. } => ret,
-                _ => panic!("expected function type"),
-            },
+            TermImpl::Var { ty, .. } => ty.clone(),
+            TermImpl::Abstract { arg_ty, body, .. } => Type::func(arg_ty.clone(), body.ty()),
+            TermImpl::Apply { func, .. } => func.ty().ret().unwrap().clone(),
         }
     }
 
