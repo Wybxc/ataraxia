@@ -1,7 +1,6 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use arcstr::ArcStr;
-use eyre::{ensure, Result};
 
 /// A type variable.
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
@@ -15,7 +14,7 @@ pub struct CompoundOp(pub ArcStr);
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct Compound {
     pub op: CompoundOp,
-    pub args: Box<[Type]>,
+    pub args: Vec<Type>,
 }
 
 /// A function type.
@@ -33,7 +32,6 @@ pub struct Type(pub Arc<TypeImpl>);
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub enum TypeImpl {
     TypeVar(TypeVar),
-    Constant(CompoundOp),
     Compound(Compound),
     Function(Function),
 }
@@ -46,21 +44,20 @@ impl Type {
 
     /// Creates a new constant type (a compound type with no arguments).
     pub fn new_constant(name: impl Into<CompoundOp>) -> Self {
-        Self(Arc::new(TypeImpl::Constant(name.into())))
+        Self(Arc::new(TypeImpl::Compound(Compound {
+            op: name.into(),
+            args: vec![],
+        })))
     }
 
     /// Creates a new compound type.
     pub fn new_compound(
         op: impl Into<CompoundOp>,
         args: impl IntoIterator<Item = impl Into<Type>>,
-    ) -> Result<Self> {
+    ) -> Self {
         let op = op.into();
-        let args: Box<[Type]> = args.into_iter().map(Into::into).collect();
-        ensure!(
-            !args.is_empty(),
-            "compound type must have at least one argument"
-        );
-        Ok(Self(Arc::new(TypeImpl::Compound(Compound { op, args }))))
+        let args = args.into_iter().map(Into::into).collect();
+        Self(Arc::new(TypeImpl::Compound(Compound { op, args })))
     }
 
     /// Creates a new function type.
@@ -79,14 +76,6 @@ impl Type {
         }
     }
 
-    /// Returns the constant type name, if this is a constant type.
-    pub fn as_constant(&self) -> Option<&CompoundOp> {
-        match &*self.0 {
-            TypeImpl::Constant(op) => Some(op),
-            _ => None,
-        }
-    }
-
     /// Returns the compound type operator and arguments, if this is a compound type.
     pub fn as_compound(&self) -> Option<&Compound> {
         match &*self.0 {
@@ -100,6 +89,21 @@ impl Type {
         match &*self.0 {
             TypeImpl::Function(function) => Some(function),
             _ => None,
+        }
+    }
+
+    /// Instantiates this type with the given type substitution.
+    pub fn instantiate(&self, subst: &HashMap<TypeVar, Type>) -> Self {
+        match &*self.0 {
+            TypeImpl::TypeVar(var) => subst.get(var).cloned().unwrap_or_else(|| self.clone()),
+            TypeImpl::Compound(compound) => Self::new_compound(
+                compound.op.clone(),
+                compound.args.iter().map(|arg| arg.instantiate(subst)),
+            ),
+            TypeImpl::Function(function) => Self::new_function(
+                function.arg.instantiate(subst),
+                function.ret.instantiate(subst),
+            ),
         }
     }
 }
