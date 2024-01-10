@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, OnceLock},
+};
 
 use arcstr::ArcStr;
 
@@ -34,16 +37,17 @@ pub enum TypeImpl {
     TypeVar(TypeVar),
     Compound(Compound),
     Function(Function),
+    Bool,
 }
 
 impl Type {
     /// Creates a new type variable.
-    pub fn new_var(name: impl Into<ArcStr>) -> Self {
+    pub fn var(name: impl Into<ArcStr>) -> Self {
         Self(Arc::new(TypeImpl::TypeVar(TypeVar(name.into()))))
     }
 
     /// Creates a new constant type (a compound type with no arguments).
-    pub fn new_constant(name: impl Into<CompoundOp>) -> Self {
+    pub fn constant(name: impl Into<CompoundOp>) -> Self {
         Self(Arc::new(TypeImpl::Compound(Compound {
             op: name.into(),
             args: vec![],
@@ -51,7 +55,7 @@ impl Type {
     }
 
     /// Creates a new compound type.
-    pub fn new_compound(
+    pub fn compound(
         op: impl Into<CompoundOp>,
         args: impl IntoIterator<Item = impl Into<Type>>,
     ) -> Self {
@@ -61,11 +65,17 @@ impl Type {
     }
 
     /// Creates a new function type.
-    pub fn new_function(arg: impl Into<Type>, ret: impl Into<Type>) -> Self {
+    pub fn function(arg: impl Into<Type>, ret: impl Into<Type>) -> Self {
         Self(Arc::new(TypeImpl::Function(Function {
             arg: arg.into(),
             ret: ret.into(),
         })))
+    }
+
+    /// Creates a new boolean type.
+    pub fn bool() -> Self {
+        static BOOL: OnceLock<Type> = OnceLock::new();
+        BOOL.get_or_init(|| Self(Arc::new(TypeImpl::Bool))).clone()
     }
 
     /// Returns the type variable name, if this is a type variable.
@@ -76,7 +86,8 @@ impl Type {
         }
     }
 
-    /// Returns the compound type operator and arguments, if this is a compound type.
+    /// Returns the compound type operator and arguments, if this is a compound
+    /// type.
     pub fn as_compound(&self) -> Option<&Compound> {
         match &*self.0 {
             TypeImpl::Compound(compound) => Some(compound),
@@ -84,7 +95,8 @@ impl Type {
         }
     }
 
-    /// Returns the function type argument and return type, if this is a function type.
+    /// Returns the function type argument and return type, if this is a
+    /// function type.
     pub fn as_function(&self) -> Option<&Function> {
         match &*self.0 {
             TypeImpl::Function(function) => Some(function),
@@ -96,14 +108,14 @@ impl Type {
     pub fn instantiate(&self, subst: &HashMap<TypeVar, Type>) -> Self {
         match &*self.0 {
             TypeImpl::TypeVar(var) => subst.get(var).cloned().unwrap_or_else(|| self.clone()),
-            TypeImpl::Compound(compound) => Self::new_compound(
+            TypeImpl::Compound(compound) => Self::compound(
                 compound.op.clone(),
                 compound.args.iter().map(|arg| arg.instantiate(subst)),
             ),
-            TypeImpl::Function(function) => Self::new_function(
-                function.arg.instantiate(subst),
-                function.ret.instantiate(subst),
-            ),
+            TypeImpl::Function(function) => {
+                Self::function(function.arg.instantiate(subst), function.ret.instantiate(subst))
+            }
+            TypeImpl::Bool => self.clone(),
         }
     }
 }
