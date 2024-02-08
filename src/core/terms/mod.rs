@@ -3,7 +3,7 @@ use std::rc::Rc;
 use arcstr::ArcStr;
 use eyre::Result;
 
-mod compute;
+// mod compute;
 mod variants;
 
 pub use variants::*;
@@ -21,6 +21,7 @@ pub enum TermImpl {
     Constant(Constant),
     Application(Application),
     Matching(Matching),
+    Equality(Equality),
     Implication(Implication),
 }
 
@@ -45,6 +46,11 @@ impl Term {
         Ok(Self(Rc::new(TermImpl::Matching(Matching::new(cases)?))))
     }
 
+    /// Creates a new equality.
+    pub fn equality(left: Term, right: Term) -> Result<Self> {
+        Ok(Self(Rc::new(TermImpl::Equality(Equality::new(left, right)?))))
+    }
+
     /// Creates a new implication.
     pub fn implication(antecedent: Term, consequent: Term) -> Result<Self> {
         Ok(Self(Rc::new(TermImpl::Implication(Implication::new(antecedent, consequent)?))))
@@ -61,6 +67,9 @@ impl Term {
 
     /// Checks if the term is a match.
     pub fn is_matching(&self) -> bool { matches!(&*self.0, TermImpl::Matching(_)) }
+
+    /// Checks if the term is an equality.
+    pub fn is_equality(&self) -> bool { matches!(&*self.0, TermImpl::Equality(_)) }
 
     /// Checks if the term is an implication.
     pub fn is_implication(&self) -> bool { matches!(&*self.0, TermImpl::Implication(_)) }
@@ -97,11 +106,43 @@ impl Term {
         }
     }
 
+    /// Returns a reference to the equality, if this is an equality.
+    pub fn as_equality(&self) -> Option<&Equality> {
+        match &*self.0 {
+            TermImpl::Equality(equality) => Some(equality),
+            _ => None,
+        }
+    }
+
     /// Returns a reference to the implication, if this is an implication.
     pub fn as_implication(&self) -> Option<&Implication> {
         match &*self.0 {
             TermImpl::Implication(implication) => Some(implication),
             _ => None,
+        }
+    }
+
+    /// Instantiates type variables in this term.
+    ///
+    /// TODO: Copy on write
+    pub fn instantiate(&self, inst: &impl Fn(Type) -> Type) -> Self {
+        match &*self.0 {
+            TermImpl::Var(var) => Term(Rc::new(TermImpl::Var(var.instantiate(inst)))),
+            TermImpl::Constant(constant) => {
+                Term(Rc::new(TermImpl::Constant(constant.instantiate(inst))))
+            }
+            TermImpl::Application(application) => {
+                Term(Rc::new(TermImpl::Application(application.instantiate(inst))))
+            }
+            TermImpl::Matching(matching) => {
+                Term(Rc::new(TermImpl::Matching(matching.instantiate(inst))))
+            }
+            TermImpl::Equality(equality) => {
+                Term(Rc::new(TermImpl::Equality(equality.instantiate(inst))))
+            }
+            TermImpl::Implication(implication) => {
+                Term(Rc::new(TermImpl::Implication(implication.instantiate(inst))))
+            }
         }
     }
 }
@@ -113,6 +154,7 @@ impl HasType for Term {
             TermImpl::Constant(constant) => constant.ty(),
             TermImpl::Application(application) => application.ty(),
             TermImpl::Matching(matching) => matching.ty(),
+            TermImpl::Equality(equality) => equality.ty(),
             TermImpl::Implication(implication) => implication.ty(),
         }
     }

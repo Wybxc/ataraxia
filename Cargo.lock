@@ -24,6 +24,7 @@ version = "0.1.0"
 dependencies = [
  "arcstr",
  "eyre",
+ "once_cell",
 ]
 
 [[package]]

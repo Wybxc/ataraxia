@@ -1,7 +1,8 @@
-use std::{cell::OnceCell, rc::Rc};
+use std::{cell::OnceCell, rc::Rc, sync::atomic::AtomicI32};
 
 use arcstr::ArcStr;
 
+pub mod unify;
 mod variants;
 
 pub use variants::*;
@@ -23,6 +24,13 @@ impl Type {
     /// Creates a new type variable.
     pub fn var(name: impl Into<ArcStr>) -> Self {
         Self(Rc::new(TypeImpl::TypeVar(TypeVar::new(name))))
+    }
+
+    /// Create an anonymous type variable.
+    pub fn anon_var() -> Self {
+        static COUNTER: AtomicI32 = AtomicI32::new(1);
+        let id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        Self::var(format!("?{}", id))
     }
 
     /// Creates a new constant type (a compound type with no arguments).
@@ -83,6 +91,28 @@ impl Type {
         match &*self.0 {
             TypeImpl::Function(function) => Some(function),
             _ => None,
+        }
+    }
+
+    /// Instantiates type variables in this type.
+    pub fn subst(&self, var: &TypeVar, ty: Type) -> Type {
+        match &*self.0 {
+            TypeImpl::TypeVar(var2) if var == var2 => ty,
+            TypeImpl::TypeVar(_) => self.clone(),
+            TypeImpl::Compound(compound) => {
+                let args: Box<[Type]> = compound
+                    .args()
+                    .iter()
+                    .map(|arg| arg.subst(var, ty.clone()))
+                    .collect();
+                Type::compound(compound.op().clone(), args)
+            }
+            TypeImpl::Function(function) => {
+                let arg = function.arg().subst(var, ty.clone());
+                let ret = function.ret().subst(var, ty);
+                Type::function(arg, ret)
+            }
+            TypeImpl::Bool => Type::bool(),
         }
     }
 }
