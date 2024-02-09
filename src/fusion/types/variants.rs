@@ -1,6 +1,6 @@
 use arcstr::ArcStr;
 
-use crate::core::types::Type;
+use crate::fusion::types::Type;
 
 /// A type variable.
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]

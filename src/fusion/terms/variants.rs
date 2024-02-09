@@ -1,9 +1,9 @@
-use std::collections::HashSet;
+use std::{borrow::Cow, collections::HashSet, ops::Not};
 
 use arcstr::ArcStr;
 use eyre::{bail, ensure, Result};
 
-use crate::core::{
+use crate::fusion::{
     terms::{Term, TermImpl},
     types::{unify::unify, HasType, Type},
 };
@@ -26,11 +26,12 @@ impl Var {
     pub fn name(&self) -> &ArcStr { &self.name }
 
     /// Instantiates type variables in this variable.
-    pub fn instantiate(&self, inst: &impl Fn(Type) -> Type) -> Self {
-        Self {
+    pub fn instantiate(&self, inst: &impl Fn(Type) -> Type) -> Option<Self> {
+        let ty = inst(self.ty.clone());
+        ty.is(&self.ty).not().then(|| Var {
             name: self.name.clone(),
-            ty: inst(self.ty.clone()),
-        }
+            ty,
+        })
     }
 }
 
@@ -56,11 +57,12 @@ impl Constant {
     pub fn name(&self) -> &ArcStr { &self.name }
 
     /// Instantiates type variables in this constant.
-    pub fn instantiate(&self, inst: &impl Fn(Type) -> Type) -> Self {
-        Self {
+    pub fn instantiate(&self, inst: &impl Fn(Type) -> Type) -> Option<Self> {
+        let ty = inst(self.ty.clone());
+        ty.is(&self.ty).not().then(|| Constant {
             name: self.name.clone(),
-            ty: inst(self.ty.clone()),
-        }
+            ty,
+        })
     }
 }
 
@@ -97,11 +99,12 @@ impl Application {
     pub fn arg(&self) -> &Term { &self.arg }
 
     /// Instantiates type variables in this application.
-    pub fn instantiate(&self, inst: &impl Fn(Type) -> Type) -> Self {
-        Self {
-            func: self.func.instantiate(inst),
-            arg: self.arg.instantiate(inst),
-        }
+    pub fn instantiate(&self, inst: &impl Fn(Type) -> Type) -> Option<Self> {
+        let func = self.func.instantiate(inst);
+        let arg = self.arg.instantiate(inst);
+        (func.is(&self.func) && arg.is(&self.arg))
+            .not()
+            .then(|| Application { func, arg })
     }
 }
 
@@ -133,17 +136,22 @@ impl Matching {
     }
 
     /// Returns the cases of this matching.
-    #[allow(clippy::borrowed_box)]
-    pub fn cases(&self) -> &Box<[Case]> { &self.cases }
+    pub fn cases(&self) -> &[Case] { &self.cases }
 
     /// Instantiates type variables in this matching.
-    pub fn instantiate(&self, inst: &impl Fn(Type) -> Type) -> Self {
-        Self {
-            cases: self
-                .cases
-                .iter()
-                .map(|case| case.instantiate(inst))
-                .collect(),
+    pub fn instantiate(&self, inst: &impl Fn(Type) -> Type) -> Option<Self> {
+        let mut cases = Cow::from(&self.cases[..]);
+        for (i, case) in self.cases().iter().enumerate() {
+            if let Some(case) = case.instantiate(inst) {
+                cases.to_mut()[i] = case;
+            }
+        }
+        if matches!(cases, Cow::Borrowed(_)) {
+            None
+        } else {
+            Some(Matching {
+                cases: Box::from(cases.into_owned()),
+            })
         }
     }
 }
@@ -190,11 +198,12 @@ impl Case {
     pub fn body(&self) -> &Term { &self.body }
 
     /// Instantiates type variables in this case.
-    pub fn instantiate(&self, inst: &impl Fn(Type) -> Type) -> Self {
-        Self {
-            pat: self.pat.instantiate(inst),
-            body: self.body.instantiate(inst),
-        }
+    pub fn instantiate(&self, inst: &impl Fn(Type) -> Type) -> Option<Self> {
+        let pat = self.pat.instantiate(inst);
+        let body = self.body.instantiate(inst);
+        (pat.is(&self.pat) && body.is(&self.body))
+            .not()
+            .then(|| Case { pat, body })
     }
 }
 
@@ -227,11 +236,12 @@ impl Equality {
     pub fn right(&self) -> &Term { &self.right }
 
     /// Instantiates type variables in this equality.
-    pub fn instantiate(&self, inst: &impl Fn(Type) -> Type) -> Self {
-        Self {
-            left: self.left.instantiate(inst),
-            right: self.right.instantiate(inst),
-        }
+    pub fn instantiate(&self, inst: &impl Fn(Type) -> Type) -> Option<Self> {
+        let left = self.left.instantiate(inst);
+        let right = self.right.instantiate(inst);
+        (left.is(&self.left) && right.is(&self.right))
+            .not()
+            .then(|| Equality { left, right })
     }
 }
 
@@ -268,11 +278,15 @@ impl Implication {
     pub fn consequent(&self) -> &Term { &self.consequent }
 
     /// Instantiates type variables in this implication.
-    pub fn instantiate(&self, inst: &impl Fn(Type) -> Type) -> Self {
-        Self {
-            antecedent: self.antecedent.instantiate(inst),
-            consequent: self.consequent.instantiate(inst),
-        }
+    pub fn instantiate(&self, inst: &impl Fn(Type) -> Type) -> Option<Self> {
+        let antecedent = self.antecedent.instantiate(inst);
+        let consequent = self.consequent.instantiate(inst);
+        (antecedent.is(&self.antecedent) && consequent.is(&self.consequent))
+            .not()
+            .then(|| Implication {
+                antecedent,
+                consequent,
+            })
     }
 }
 

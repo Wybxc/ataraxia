@@ -8,7 +8,7 @@ mod variants;
 
 pub use variants::*;
 
-use crate::core::types::{HasType, Type};
+use crate::fusion::types::{HasType, Type};
 
 /// A term.
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
@@ -122,28 +122,32 @@ impl Term {
         }
     }
 
+    /// Returns whether this term is a clone of another term.
+    pub fn is(&self, other: &Self) -> bool { Rc::ptr_eq(&self.0, &other.0) }
+
     /// Instantiates type variables in this term.
-    ///
-    /// TODO: Copy on write
     pub fn instantiate(&self, inst: &impl Fn(Type) -> Type) -> Self {
         match &*self.0 {
-            TermImpl::Var(var) => Term(Rc::new(TermImpl::Var(var.instantiate(inst)))),
-            TermImpl::Constant(constant) => {
-                Term(Rc::new(TermImpl::Constant(constant.instantiate(inst))))
-            }
-            TermImpl::Application(application) => {
-                Term(Rc::new(TermImpl::Application(application.instantiate(inst))))
-            }
-            TermImpl::Matching(matching) => {
-                Term(Rc::new(TermImpl::Matching(matching.instantiate(inst))))
-            }
-            TermImpl::Equality(equality) => {
-                Term(Rc::new(TermImpl::Equality(equality.instantiate(inst))))
-            }
-            TermImpl::Implication(implication) => {
-                Term(Rc::new(TermImpl::Implication(implication.instantiate(inst))))
-            }
+            TermImpl::Var(var) => var
+                .instantiate(inst)
+                .map(|var| Term(Rc::new(TermImpl::Var(var)))),
+            TermImpl::Constant(constant) => constant
+                .instantiate(inst)
+                .map(|constant| Term(Rc::new(TermImpl::Constant(constant)))),
+            TermImpl::Application(application) => application
+                .instantiate(inst)
+                .map(|application| Term(Rc::new(TermImpl::Application(application)))),
+            TermImpl::Matching(matching) => matching
+                .instantiate(inst)
+                .map(|matching| Term(Rc::new(TermImpl::Matching(matching)))),
+            TermImpl::Equality(equality) => equality
+                .instantiate(inst)
+                .map(|equality| Term(Rc::new(TermImpl::Equality(equality)))),
+            TermImpl::Implication(implication) => implication
+                .instantiate(inst)
+                .map(|implication| Term(Rc::new(TermImpl::Implication(implication)))),
         }
+        .unwrap_or_else(|| self.clone())
     }
 }
 

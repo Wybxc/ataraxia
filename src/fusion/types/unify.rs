@@ -1,6 +1,6 @@
 use eyre::{bail, ensure, Result};
 
-use crate::core::types::{Type, TypeImpl, TypeVar};
+use crate::fusion::types::{Type, TypeImpl, TypeVar};
 
 /// Unifies two types.
 ///

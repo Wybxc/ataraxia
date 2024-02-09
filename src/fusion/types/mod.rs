@@ -1,4 +1,4 @@
-use std::{cell::OnceCell, rc::Rc, sync::atomic::AtomicI32};
+use std::{borrow::Cow, cell::OnceCell, rc::Rc, sync::atomic::AtomicI32};
 
 use arcstr::ArcStr;
 
@@ -94,23 +94,36 @@ impl Type {
         }
     }
 
+    /// Returns whether this type is a clone of another type.
+    pub fn is(&self, other: &Self) -> bool { Rc::ptr_eq(&self.0, &other.0) }
+
     /// Instantiates type variables in this type.
     pub fn subst(&self, var: &TypeVar, ty: Type) -> Type {
         match &*self.0 {
             TypeImpl::TypeVar(var2) if var == var2 => ty,
             TypeImpl::TypeVar(_) => self.clone(),
             TypeImpl::Compound(compound) => {
-                let args: Box<[Type]> = compound
-                    .args()
-                    .iter()
-                    .map(|arg| arg.subst(var, ty.clone()))
-                    .collect();
-                Type::compound(compound.op().clone(), args)
+                let mut new_args = Cow::from(compound.args());
+                for (i, arg) in compound.args().iter().enumerate() {
+                    let new_arg = arg.subst(var, ty.clone());
+                    if !new_arg.is(arg) {
+                        new_args.to_mut()[i] = new_arg;
+                    }
+                }
+                if matches!(new_args, Cow::Borrowed(_)) {
+                    self.clone()
+                } else {
+                    Type::compound(compound.op().clone(), new_args.into_owned())
+                }
             }
             TypeImpl::Function(function) => {
                 let arg = function.arg().subst(var, ty.clone());
                 let ret = function.ret().subst(var, ty);
-                Type::function(arg, ret)
+                if arg.is(function.arg()) && ret.is(function.ret()) {
+                    self.clone()
+                } else {
+                    Type::function(arg, ret)
+                }
             }
             TypeImpl::Bool => Type::bool(),
         }

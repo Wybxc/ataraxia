@@ -1,6 +1,6 @@
 use once_cell::unsync::Lazy;
 
-use crate::core::{terms::Term, types::Type};
+use crate::fusion::{terms::Term, types::Type};
 
 /// A theorem.
 pub struct Theorem {
