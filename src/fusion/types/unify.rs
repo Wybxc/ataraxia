@@ -7,50 +7,49 @@ use crate::fusion::types::{Type, TypeImpl, TypeVar};
 /// Try instantiating type variables in `a` and `b` so that they become equal.
 /// When successful, returns a function that can be used to instantiate other
 /// types with the same substitutions.
-pub fn unify(types: &[Type]) -> Result<impl Fn(Type) -> Type> {
+pub fn unify<T>(types: T) -> Result<impl Fn(Type) -> Type + 'static>
+where
+    T: IntoIterator<Item = Type>,
+    <T as IntoIterator>::IntoIter: Clone,
+{
     let mut inferred = vec![];
+    let mut constraints = vec![];
+    let types = types.into_iter();
+    for (a, b) in types.clone().zip(types.skip(1)) {
+        constraints.push((a, b));
+    }
 
-    if types.len() >= 2 {
-        let mut constraints = vec![];
-        for (a, b) in types.iter().zip(types.iter().skip(1)) {
-            constraints.push((a.clone(), b.clone()));
-        }
-
-        while let Some((a, b)) = constraints.pop() {
-            let top = match (&*a.0, &*b.0) {
-                (TypeImpl::TypeVar(a), TypeImpl::TypeVar(b)) if a.name() == b.name() => None,
-                (TypeImpl::TypeVar(a), _) if !a.occurs_in(&b) => Some((a.clone(), b.clone())),
-                (_, TypeImpl::TypeVar(b)) if !b.occurs_in(&a) => Some((b.clone(), a.clone())),
-                (TypeImpl::Compound(a), TypeImpl::Compound(b)) => {
-                    ensure!(a.op() == b.op(), "cannot unify {:?} and {:?}", a, b);
-                    let a = a.args();
-                    let b = b.args();
-                    ensure!(a.len() == b.len(), "cannot unify {:?} and {:?}", a, b);
-                    constraints.extend(a.iter().cloned().zip(b.iter().cloned()));
-                    None
-                }
-                (TypeImpl::Function(a), TypeImpl::Function(b)) => {
-                    constraints.push((a.arg().clone(), b.arg().clone()));
-                    constraints.push((a.ret().clone(), b.ret().clone()));
-                    None
-                }
-                (TypeImpl::Bool, TypeImpl::Bool) => None,
-                _ => bail!("cannot unify {:?} and {:?}", a, b),
-            };
-            if let Some((name, ty)) = top {
-                for (a, b) in constraints.iter_mut() {
-                    *a = a.subst(&name, ty.clone());
-                    *b = b.subst(&name, ty.clone());
-                }
-                inferred.push((name, ty));
+    while let Some((a, b)) = constraints.pop() {
+        let top = match (&*a.0, &*b.0) {
+            (TypeImpl::TypeVar(a), TypeImpl::TypeVar(b)) if a.name() == b.name() => None,
+            (TypeImpl::TypeVar(a), _) if !a.occurs_in(&b) => Some((a.clone(), b.clone())),
+            (_, TypeImpl::TypeVar(b)) if !b.occurs_in(&a) => Some((b.clone(), a.clone())),
+            (TypeImpl::Compound(a), TypeImpl::Compound(b)) => {
+                ensure!(a.op() == b.op(), "cannot unify {:?} and {:?}", a, b);
+                let a = a.args();
+                let b = b.args();
+                ensure!(a.len() == b.len(), "cannot unify {:?} and {:?}", a, b);
+                constraints.extend(a.iter().cloned().zip(b.iter().cloned()));
+                None
             }
+            (TypeImpl::Function(a), TypeImpl::Function(b)) => {
+                constraints.push((a.arg().clone(), b.arg().clone()));
+                constraints.push((a.ret().clone(), b.ret().clone()));
+                None
+            }
+            (TypeImpl::Bool, TypeImpl::Bool) => None,
+            _ => bail!("cannot unify {:?} and {:?}", a, b),
+        };
+        if let Some((name, ty)) = top {
+            for (a, b) in constraints.iter_mut() {
+                *a = a.subst(&name, ty.clone());
+                *b = b.subst(&name, ty.clone());
+            }
+            inferred.push((name, ty));
         }
     }
 
     Ok(move |mut rty: Type| {
-        if inferred.is_empty() {
-            return rty;
-        }
         for (name, ty) in inferred.iter() {
             rty = rty.subst(name, ty.clone());
         }

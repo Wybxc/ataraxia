@@ -42,7 +42,7 @@ impl Term {
     }
 
     /// Creates a new match.
-    pub fn matching(cases: impl Into<Box<[Case]>>) -> Result<Self> {
+    pub fn matching(cases: impl Into<Vec<Case>>) -> Result<Self> {
         Ok(Self(Rc::new(TermImpl::Matching(Matching::new(cases)?))))
     }
 

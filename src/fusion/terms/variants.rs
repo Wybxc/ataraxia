@@ -85,7 +85,7 @@ impl Application {
             bail!("`func` is not a function")
         };
         if func_ty.arg() != &arg.ty() {
-            let inst = unify(&[func_ty.arg().clone(), arg.ty()])?;
+            let inst = unify([func_ty.arg().clone(), arg.ty()])?;
             func = func.instantiate(&inst);
             arg = arg.instantiate(&inst);
         }
@@ -104,7 +104,7 @@ impl Application {
         let arg = self.arg.instantiate(inst);
         (func.is(&self.func) && arg.is(&self.arg))
             .not()
-            .then(|| Application { func, arg })
+            .then_some(Application { func, arg })
     }
 }
 
@@ -120,18 +120,25 @@ pub struct Matching {
 
 impl Matching {
     /// Creates a new match.
-    pub(super) fn new(cases: impl Into<Box<[Case]>>) -> Result<Self> {
-        let cases = cases.into();
+    pub(super) fn new(cases: impl Into<Vec<Case>>) -> Result<Self> {
+        let mut cases = cases.into();
         ensure!(!cases.is_empty(), "empty match");
 
-        let pat_ty: Box<[Type]> = cases.iter().map(|case| case.pat().ty()).collect();
-        let inst = unify(&pat_ty)?;
-        let cases: Box<[Case]> = cases.iter().map(|case| case.instantiate(&inst)).collect();
+        let inst = unify(cases.iter().map(|case| case.pat().ty()))?;
+        for case in cases.iter_mut() {
+            if let Some(new_case) = case.instantiate(&inst) {
+                *case = new_case;
+            }
+        }
 
-        let ret_ty: Box<[Type]> = cases.iter().map(|case| case.body().ty()).collect();
-        let inst = unify(&ret_ty)?;
-        let cases: Box<[Case]> = cases.iter().map(|case| case.instantiate(&inst)).collect();
+        let inst = unify(cases.iter().map(|case| case.body().ty()))?;
+        for case in cases.iter_mut() {
+            if let Some(new_case) = case.instantiate(&inst) {
+                *case = new_case;
+            }
+        }
 
+        let cases = cases.into_boxed_slice();
         Ok(Self { cases })
     }
 
@@ -203,7 +210,7 @@ impl Case {
         let body = self.body.instantiate(inst);
         (pat.is(&self.pat) && body.is(&self.body))
             .not()
-            .then(|| Case { pat, body })
+            .then_some(Case { pat, body })
     }
 }
 
@@ -222,7 +229,7 @@ impl Equality {
     /// Creates a new equality.
     pub(super) fn new(mut left: Term, mut right: Term) -> Result<Self> {
         if left.ty() != right.ty() {
-            let inst = unify(&[left.ty(), right.ty()])?;
+            let inst = unify([left.ty(), right.ty()])?;
             left = left.instantiate(&inst);
             right = right.instantiate(&inst);
         }
@@ -241,7 +248,7 @@ impl Equality {
         let right = self.right.instantiate(inst);
         (left.is(&self.left) && right.is(&self.right))
             .not()
-            .then(|| Equality { left, right })
+            .then_some(Equality { left, right })
     }
 }
 
@@ -260,10 +267,10 @@ impl Implication {
     /// Creates a new implication.
     pub(super) fn new(mut antecedent: Term, mut consequent: Term) -> Result<Self> {
         if antecedent.ty() != Type::bool() {
-            antecedent = antecedent.instantiate(&unify(&[antecedent.ty(), Type::bool()])?);
+            antecedent = antecedent.instantiate(&unify([antecedent.ty(), Type::bool()])?);
         }
         if consequent.ty() != Type::bool() {
-            consequent = consequent.instantiate(&unify(&[consequent.ty(), Type::bool()])?);
+            consequent = consequent.instantiate(&unify([consequent.ty(), Type::bool()])?);
         }
         Ok(Self {
             antecedent,
@@ -283,7 +290,7 @@ impl Implication {
         let consequent = self.consequent.instantiate(inst);
         (antecedent.is(&self.antecedent) && consequent.is(&self.consequent))
             .not()
-            .then(|| Implication {
+            .then_some(Implication {
                 antecedent,
                 consequent,
             })
