@@ -1,29 +1,32 @@
 use std::{borrow::Cow, collections::HashSet, ops::Not};
 
-use arcstr::ArcStr;
 use eyre::{bail, ensure, Result};
+use smol_str::SmolStr;
 
 use crate::fusion::{
     terms::{Term, TermImpl},
-    types::{unify::unify, HasType, Type},
+    types::{
+        unify::{alpha, unify},
+        HasType, Type,
+    },
 };
 
 /// A variable.
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct Var {
-    name: ArcStr,
+    name: SmolStr,
     ty: Type,
 }
 
 impl Var {
     /// Creates a new variable.
-    pub(super) fn new(name: impl Into<ArcStr>, ty: Type) -> Self {
+    pub(super) fn new(name: impl Into<SmolStr>, ty: Type) -> Self {
         let name = name.into();
         Self { name, ty }
     }
 
     /// Returns the name of this variable.
-    pub fn name(&self) -> &ArcStr { &self.name }
+    pub fn name(&self) -> &SmolStr { &self.name }
 
     /// Instantiates type variables in this variable.
     pub fn instantiate(&self, inst: &impl Fn(Type) -> Type) -> Option<Self> {
@@ -42,19 +45,19 @@ impl HasType for Var {
 /// A constant.
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct Constant {
-    name: ArcStr,
+    name: SmolStr,
     ty: Type,
 }
 
 impl Constant {
     /// Creates a new constant.
-    pub(super) fn new(name: impl Into<ArcStr>, ty: Type) -> Self {
+    pub(super) fn new(name: impl Into<SmolStr>, ty: Type) -> Self {
         let name = name.into();
         Self { name, ty }
     }
 
     /// Returns the name of this constant.
-    pub fn name(&self) -> &ArcStr { &self.name }
+    pub fn name(&self) -> &SmolStr { &self.name }
 
     /// Instantiates type variables in this constant.
     pub fn instantiate(&self, inst: &impl Fn(Type) -> Type) -> Option<Self> {
@@ -85,7 +88,8 @@ impl Application {
             bail!("`func` is not a function")
         };
         if func_ty.arg() != &arg.ty() {
-            let inst = unify([func_ty.arg().clone(), arg.ty()])?;
+            func = func.instantiate(&alpha(func.ty(), &arg.ty().free_vars()));
+            let inst = unify([func.ty().as_function().unwrap().arg().clone(), arg.ty()])?;
             func = func.instantiate(&inst);
             arg = arg.instantiate(&inst);
         }
@@ -179,7 +183,7 @@ impl Term {
         match &*self.0 {
             TermImpl::Var(var) => vars.insert(var.clone()),
             TermImpl::Constant(_) => true,
-            TermImpl::Matching(_) | TermImpl::Equality(_) | TermImpl::Implication(_) => false,
+            TermImpl::Matching(_) => false,
             TermImpl::Application(app) => {
                 app.func().is_pattern(vars)
                     && app
@@ -216,87 +220,4 @@ impl Case {
 
 impl HasType for Case {
     fn ty(&self) -> Type { Type::function(self.pat.ty(), self.body.ty()) }
-}
-
-/// Equality of terms.
-#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
-pub struct Equality {
-    left: Term,
-    right: Term,
-}
-
-impl Equality {
-    /// Creates a new equality.
-    pub(super) fn new(mut left: Term, mut right: Term) -> Result<Self> {
-        if left.ty() != right.ty() {
-            let inst = unify([left.ty(), right.ty()])?;
-            left = left.instantiate(&inst);
-            right = right.instantiate(&inst);
-        }
-        Ok(Self { left, right })
-    }
-
-    /// Returns the left-hand side of this equality.
-    pub fn left(&self) -> &Term { &self.left }
-
-    /// Returns the right-hand side of this equality.
-    pub fn right(&self) -> &Term { &self.right }
-
-    /// Instantiates type variables in this equality.
-    pub fn instantiate(&self, inst: &impl Fn(Type) -> Type) -> Option<Self> {
-        let left = self.left.instantiate(inst);
-        let right = self.right.instantiate(inst);
-        (left.is(&self.left) && right.is(&self.right))
-            .not()
-            .then_some(Equality { left, right })
-    }
-}
-
-impl HasType for Equality {
-    fn ty(&self) -> Type { Type::bool() }
-}
-
-/// Implication of terms.
-#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
-pub struct Implication {
-    antecedent: Term,
-    consequent: Term,
-}
-
-impl Implication {
-    /// Creates a new implication.
-    pub(super) fn new(mut antecedent: Term, mut consequent: Term) -> Result<Self> {
-        if antecedent.ty() != Type::bool() {
-            antecedent = antecedent.instantiate(&unify([antecedent.ty(), Type::bool()])?);
-        }
-        if consequent.ty() != Type::bool() {
-            consequent = consequent.instantiate(&unify([consequent.ty(), Type::bool()])?);
-        }
-        Ok(Self {
-            antecedent,
-            consequent,
-        })
-    }
-
-    /// Returns the antecedent of this implication.
-    pub fn antecedent(&self) -> &Term { &self.antecedent }
-
-    /// Returns the consequent of this implication.
-    pub fn consequent(&self) -> &Term { &self.consequent }
-
-    /// Instantiates type variables in this implication.
-    pub fn instantiate(&self, inst: &impl Fn(Type) -> Type) -> Option<Self> {
-        let antecedent = self.antecedent.instantiate(inst);
-        let consequent = self.consequent.instantiate(inst);
-        (antecedent.is(&self.antecedent) && consequent.is(&self.consequent))
-            .not()
-            .then_some(Implication {
-                antecedent,
-                consequent,
-            })
-    }
-}
-
-impl HasType for Implication {
-    fn ty(&self) -> Type { Type::bool() }
 }

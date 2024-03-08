@@ -1,6 +1,25 @@
+use std::collections::HashSet;
+
 use eyre::{bail, ensure, Result};
 
 use crate::fusion::types::{Type, TypeImpl, TypeVar};
+
+/// Alpha-renames a type.
+///
+/// Rename type variables in `ty` so that they do not conflict with `ref_ty`.
+pub fn alpha(ty: Type, ref_ty: &HashSet<&TypeVar>) -> impl Fn(Type) -> Type + 'static {
+    let vars = ty
+        .free_vars()
+        .intersection(ref_ty)
+        .map(|&var| (var.clone(), Type::anon()))
+        .collect::<Vec<_>>();
+    move |mut ty| {
+        for (var, anon) in vars.iter() {
+            ty = ty.subst(var, anon.clone());
+        }
+        ty
+    }
+}
 
 /// Unifies two types.
 ///
@@ -16,6 +35,7 @@ where
     let mut constraints = vec![];
     let types = types.into_iter();
     for (a, b) in types.clone().zip(types.skip(1)) {
+        debug_assert!(a.free_vars().intersection(&b.free_vars()).count() == 0);
         constraints.push((a, b));
     }
 
@@ -37,7 +57,6 @@ where
                 constraints.push((a.ret().clone(), b.ret().clone()));
                 None
             }
-            (TypeImpl::Bool, TypeImpl::Bool) => None,
             _ => bail!("cannot unify {:?} and {:?}", a, b),
         };
         if let Some((name, ty)) = top {

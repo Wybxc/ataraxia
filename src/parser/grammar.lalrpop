@@ -1,0 +1,97 @@
+use crate::parser::*;
+use smol_str::SmolStr;
+
+grammar;
+
+match {
+    // Operators
+    "->",
+    "=>",
+    "|",
+    ",",
+    ":",
+    "(",
+    ")",
+    "[",
+    "]",
+    "{",
+    "}",
+    r"(~`!@#\$%\^&\*_\|:;<>?+=-/\\\.)+",
+
+    // Keywords
+    "match",
+    "fun",
+
+    // Identifiers
+    r"'[a-zA-Z_][a-zA-Z0-9_]*",
+    r"\w+",
+
+    // Whitespace
+    r"\s*" => { },
+}
+
+pub Expr: TokenTree = {
+    <segments: ExprSegments> => TokenTree::Group(segments),
+    <expr: ExprSegments> ":" <ty: Type> => TokenTree::Annotation {
+        expr: Box::new(TokenTree::Group(expr)),
+        ty
+    },
+    "match" <expr: Expr> "{" <mut cases: (Case ",")*> <case: Case> ","? "}" => TokenTree::Match {
+        scrutinee:Box::new(expr),
+        cases: append(cases, case)
+    },
+    "fun" <name: Name> "=>" <expr: Expr> => TokenTree::Function {
+        name,
+        body: Box::new(expr)
+    },
+};
+
+ExprSegments: Vec<TokenTree> = {
+    <mut op: Operator*> <prim: Primary> => append(op, prim),
+    <mut seg: ExprSegments2> <prim: Primary> => append(seg, prim),
+    <mut seg: ExprSegments2> => seg,
+};
+
+ExprSegments2: Vec<TokenTree> = {
+    <mut ops: Operator*> <prim: Primary> <op: Operator> => append(append(ops, prim), op),
+    <mut seg: ExprSegments2> <prim: Primary> <op: Operator> => append(append(seg, prim), op),
+    <mut seg: ExprSegments2> <op: Operator> => append(seg, op),
+};
+
+Case: (TokenTree, TokenTree) = {
+    <pat: Expr> "=>" <expr: Expr> => (pat, expr),
+};
+
+Primary: TokenTree = {
+    <name: Name> => { TokenTree::Name(name) },
+    "(" <expr: Expr> ")" => { TokenTree::Group(expr) },
+    <func: Primary> "(" <mut args: (Expr ",")*> <arg: Expr?> ")" => {
+        TokenTree::Application(Box::new(func), concat(args, arg))
+    },
+};
+
+Type: TypeExpr = {
+    <ty: TypePrimary> => ty,
+    <func: TypePrimary> "->" <ty: Type> => TypeExpr::Function(Box::new(func), Box::new(ty)),
+};
+
+TypePrimary: TypeExpr = {
+    <var: TypeVar> => TypeExpr::TypeVar(var),
+    "(" <ty: Type> ")" => ty,
+    <name: Name> => TypeExpr::Compound(name, vec![]),
+    <name: Name> "[" <mut args: (Type ",")*> <arg: Type> "]" => {
+        TypeExpr::Compound(name, concat(args, arg))
+    },
+};
+
+Operator: TokenTree = {
+    r"(~`!@#\$%\^&\*_\|:;<>?+=-/\\\.)+" => TokenTree::Operator(<>.into())
+};
+
+Name: SmolStr = {
+    r"\w+" => <>.into(),
+};
+
+TypeVar: SmolStr = {
+    r"'[a-zA-Z_][a-zA-Z0-9_]*" => <>[1..].into(),
+};

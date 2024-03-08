@@ -1,7 +1,8 @@
-use std::{borrow::Cow, cell::OnceCell, rc::Rc, sync::atomic::AtomicI32};
+use std::{borrow::Cow, collections::HashSet, rc::Rc, sync::atomic::AtomicI32};
 
-use arcstr::ArcStr;
+use smol_str::SmolStr;
 
+pub mod builder;
 pub mod unify;
 mod variants;
 
@@ -17,43 +18,34 @@ pub enum TypeImpl {
     TypeVar(TypeVar),
     Compound(Compound),
     Function(Function),
-    Bool,
 }
 
 impl Type {
     /// Creates a new type variable.
-    pub fn var(name: impl Into<ArcStr>) -> Self {
+    pub fn var(name: impl Into<SmolStr>) -> Self {
         Self(Rc::new(TypeImpl::TypeVar(TypeVar::new(name))))
     }
 
     /// Create an anonymous type variable.
-    pub fn anon_var() -> Self {
+    pub fn anon() -> Self {
         static COUNTER: AtomicI32 = AtomicI32::new(1);
         let id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Self::var(format!("?{}", id))
     }
 
     /// Creates a new constant type (a compound type with no arguments).
-    pub fn constant(name: ArcStr) -> Self {
+    pub fn constant(name: impl Into<SmolStr>) -> Self {
         Self(Rc::new(TypeImpl::Compound(Compound::constant(name))))
     }
 
     /// Creates a new compound type.
-    pub fn compound(op: ArcStr, args: impl Into<Box<[Type]>>) -> Self {
+    pub fn compound(op: impl Into<SmolStr>, args: impl Into<Box<[Type]>>) -> Self {
         Self(Rc::new(TypeImpl::Compound(Compound::new(op, args))))
     }
 
     /// Creates a new function type.
     pub fn function(arg: Type, ret: Type) -> Self {
         Self(Rc::new(TypeImpl::Function(Function::new(arg, ret))))
-    }
-
-    /// Creates a new boolean type.
-    pub fn bool() -> Self {
-        thread_local! {
-            static BOOL: OnceCell<Type> = OnceCell::new();
-        }
-        BOOL.with(|bool| bool.get_or_init(|| Self(Rc::new(TypeImpl::Bool))).clone())
     }
 
     /// Checks if this is a type variable.
@@ -64,9 +56,6 @@ impl Type {
 
     /// Checks if this is a function type.
     pub fn is_function(&self) -> bool { matches!(&*self.0, TypeImpl::Function(_)) }
-
-    /// Checks if this is a boolean type.
-    pub fn is_bool(&self) -> bool { matches!(&*self.0, TypeImpl::Bool) }
 
     /// Returns the type variable name, if this is a type variable.
     pub fn as_var(&self) -> Option<&TypeVar> {
@@ -97,6 +86,30 @@ impl Type {
     /// Returns whether this type is a clone of another type.
     pub fn is(&self, other: &Self) -> bool { Rc::ptr_eq(&self.0, &other.0) }
 
+    /// Returns free type variables in this type.
+    pub fn free_vars(&self) -> HashSet<&TypeVar> {
+        let mut set = HashSet::new();
+        self.free_vars_impl(&mut set);
+        set
+    }
+
+    fn free_vars_impl(&self, set: &mut HashSet<&TypeVar>) {
+        match &*self.0 {
+            TypeImpl::TypeVar(var) => {
+                set.insert(var);
+            }
+            TypeImpl::Compound(compound) => {
+                for arg in compound.args() {
+                    arg.free_vars_impl(set);
+                }
+            }
+            TypeImpl::Function(function) => {
+                function.arg().free_vars_impl(set);
+                function.ret().free_vars_impl(set);
+            }
+        }
+    }
+
     /// Instantiates type variables in this type.
     pub fn subst(&self, var: &TypeVar, ty: Type) -> Type {
         match &*self.0 {
@@ -125,7 +138,6 @@ impl Type {
                     Type::function(arg, ret)
                 }
             }
-            TypeImpl::Bool => Type::bool(),
         }
     }
 }

@@ -1,14 +1,18 @@
 use std::rc::Rc;
 
-use arcstr::ArcStr;
 use eyre::Result;
+use smol_str::SmolStr;
 
 // mod compute;
+pub(crate) mod builder;
 mod variants;
 
 pub use variants::*;
 
-use crate::fusion::types::{HasType, Type};
+use crate::fusion::types::{
+    unify::{alpha, unify},
+    HasType, Type,
+};
 
 /// A term.
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
@@ -21,18 +25,16 @@ pub enum TermImpl {
     Constant(Constant),
     Application(Application),
     Matching(Matching),
-    Equality(Equality),
-    Implication(Implication),
 }
 
 impl Term {
     /// Creates a new variable.
-    pub fn var(name: impl Into<ArcStr>, ty: Type) -> Self {
+    pub fn var(name: impl Into<SmolStr>, ty: Type) -> Self {
         Self(Rc::new(TermImpl::Var(Var::new(name, ty))))
     }
 
     /// Creates a new constant.
-    pub fn constant(name: impl Into<ArcStr>, ty: Type) -> Self {
+    pub fn constant(name: impl Into<SmolStr>, ty: Type) -> Self {
         Self(Rc::new(TermImpl::Constant(Constant::new(name, ty))))
     }
 
@@ -46,16 +48,6 @@ impl Term {
         Ok(Self(Rc::new(TermImpl::Matching(Matching::new(cases)?))))
     }
 
-    /// Creates a new equality.
-    pub fn equality(left: Term, right: Term) -> Result<Self> {
-        Ok(Self(Rc::new(TermImpl::Equality(Equality::new(left, right)?))))
-    }
-
-    /// Creates a new implication.
-    pub fn implication(antecedent: Term, consequent: Term) -> Result<Self> {
-        Ok(Self(Rc::new(TermImpl::Implication(Implication::new(antecedent, consequent)?))))
-    }
-
     /// Checks if the term is a variable.
     pub fn is_var(&self) -> bool { matches!(&*self.0, TermImpl::Var(_)) }
 
@@ -67,12 +59,6 @@ impl Term {
 
     /// Checks if the term is a match.
     pub fn is_matching(&self) -> bool { matches!(&*self.0, TermImpl::Matching(_)) }
-
-    /// Checks if the term is an equality.
-    pub fn is_equality(&self) -> bool { matches!(&*self.0, TermImpl::Equality(_)) }
-
-    /// Checks if the term is an implication.
-    pub fn is_implication(&self) -> bool { matches!(&*self.0, TermImpl::Implication(_)) }
 
     /// Returns a reference to the variable, if this is a variable.
     pub fn as_var(&self) -> Option<&Var> {
@@ -106,22 +92,6 @@ impl Term {
         }
     }
 
-    /// Returns a reference to the equality, if this is an equality.
-    pub fn as_equality(&self) -> Option<&Equality> {
-        match &*self.0 {
-            TermImpl::Equality(equality) => Some(equality),
-            _ => None,
-        }
-    }
-
-    /// Returns a reference to the implication, if this is an implication.
-    pub fn as_implication(&self) -> Option<&Implication> {
-        match &*self.0 {
-            TermImpl::Implication(implication) => Some(implication),
-            _ => None,
-        }
-    }
-
     /// Returns whether this term is a clone of another term.
     pub fn is(&self, other: &Self) -> bool { Rc::ptr_eq(&self.0, &other.0) }
 
@@ -140,14 +110,15 @@ impl Term {
             TermImpl::Matching(matching) => matching
                 .instantiate(inst)
                 .map(|matching| Term(Rc::new(TermImpl::Matching(matching)))),
-            TermImpl::Equality(equality) => equality
-                .instantiate(inst)
-                .map(|equality| Term(Rc::new(TermImpl::Equality(equality)))),
-            TermImpl::Implication(implication) => implication
-                .instantiate(inst)
-                .map(|implication| Term(Rc::new(TermImpl::Implication(implication)))),
         }
         .unwrap_or_else(|| self.clone())
+    }
+
+    /// Coerces this term to a given type.
+    pub fn coercion(&self, ty: Type) -> Result<Self> {
+        let result = self.instantiate(&alpha(self.ty(), &ty.free_vars()));
+        let inst = unify([result.ty(), ty])?;
+        Ok(result.instantiate(&inst))
     }
 }
 
@@ -158,8 +129,6 @@ impl HasType for Term {
             TermImpl::Constant(constant) => constant.ty(),
             TermImpl::Application(application) => application.ty(),
             TermImpl::Matching(matching) => matching.ty(),
-            TermImpl::Equality(equality) => equality.ty(),
-            TermImpl::Implication(implication) => implication.ty(),
         }
     }
 }

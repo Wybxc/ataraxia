@@ -94,3 +94,22 @@ B
 ```text
 (match p1 -> t1 | p2 -> t2 | ...) x = x[p1/t1; p2/t2; ...]
 ```
+
+## Grammar
+
+```text
+        Expr ::= ExprSegments
+               | ExprSegments ":" Type
+               | "match" Expr "{" (Case ",")* Case ","? "}" 
+               | "fun" Name "=>" Expr
+        Case ::= Expr "=>" Expr
+ExprSegments ::= Operator* Primary (Operator+ Primary)* Operator*
+     Primary ::= Name
+               | "(" Expr ")"
+               | Primary "(" (Expr ",")* Expr? ")"
+        Type ::= Name
+               | TypeVar
+               | "(" Type ")"
+               | Type "->" Type
+               | Type "[" (Type ",")* Type "]"
+```

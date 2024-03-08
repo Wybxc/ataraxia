@@ -1,43 +1,45 @@
-use arcstr::ArcStr;
+use smol_str::SmolStr;
 
 use crate::fusion::types::Type;
 
 /// A type variable.
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct TypeVar {
-    name: ArcStr,
+    name: SmolStr,
 }
 
 impl TypeVar {
     /// Creates a new type variable.
-    pub(super) fn new(name: impl Into<ArcStr>) -> Self { Self { name: name.into() } }
+    pub(super) fn new(name: impl Into<SmolStr>) -> Self { Self { name: name.into() } }
 
     /// Returns the name of the type variable.
-    pub fn name(&self) -> &ArcStr { &self.name }
+    pub fn name(&self) -> &SmolStr { &self.name }
 }
 
 /// A compound type.
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct Compound {
-    op: ArcStr,
+    op: SmolStr,
     args: Box<[Type]>,
 }
 
 impl Compound {
     /// Creates a new constant type (a compound type with no arguments).
-    pub(super) fn constant(name: ArcStr) -> Self {
+    pub(super) fn constant(name: impl Into<SmolStr>) -> Self {
+        let name = name.into();
         let args = Box::new([]);
         Self { op: name, args }
     }
 
     /// Creates a new compound type.
-    pub(super) fn new(op: ArcStr, args: impl Into<Box<[Type]>>) -> Self {
+    pub(super) fn new(op: impl Into<SmolStr>, args: impl Into<Box<[Type]>>) -> Self {
+        let op = op.into();
         let args = args.into();
         Self { op, args }
     }
 
     /// Returns the operator of the compound type.
-    pub fn op(&self) -> &ArcStr { &self.op }
+    pub fn op(&self) -> &SmolStr { &self.op }
 
     /// Returns the arguments of the compound type.
     pub fn args(&self) -> &[Type] { &self.args }
